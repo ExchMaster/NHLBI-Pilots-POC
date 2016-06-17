@@ -7,8 +7,9 @@ parted
 select /dev/md127
 mklabel gpt
 mkpart primary 0% 100%
+quit
 mkfs.xfs /dev/md127p1
-
+mkdir /data
 #add to fstabl
 /dev/md127p1 /data                   xfs     defaults        0 0
 mount -a
