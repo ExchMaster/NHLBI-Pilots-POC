@@ -1,0 +1,17 @@
+#Enable X-11 Forwarding: RedHat/CentOS
+yum install xorg-x11-xauth xorg-x11-fonts-* xorg-x11-font-utils xorg-x11-fonts-Type1 xclock
+
+mdadm --create /dev/md127 --level 0 --raid-devices 50 /dev/sdc /dev/sdd /dev/sde /dev/sdf /dev/sdg /dev/sdh /dev/sdi /dev/sdj /dev/sdk /dev/sdl /dev/sdm /dev/sdn /dev/sdo /dev/sdp /dev/sdq /dev/sdr /dev/sds /dev/sdt /dev/sdu /dev/sdv /dev/sdw /dev/sdx /dev/sdy dev/sdz /dev/sdaa /dev/sdab /dev/sdac /dev/sdad /dev/sdae /dev/sdaf /dev/sdag /dev/sdah /dev/sdai /dev/sdaj /dev/sdak /dev/sdal /dev/sdam /dev/sdan /dev/sdao /dev/sdap /dev/sdaq /dev/sdar /dev/sdas /dev/sdat /dev/sdau /dev/sdav /dev/sdaw /dev/sdax /dev/sday /dev/sdaz  
+
+parted
+select /dev/md127
+mklabel gpt
+mkpart primary 0% 100%
+mkfs.xfs /dev/md127p1
+
+#add to fstabl
+/dev/md127p1 /data                   xfs     defaults        0 0
+mount -a
+
+
+

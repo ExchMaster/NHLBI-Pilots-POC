@@ -1,0 +1,709 @@
+﻿{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "vmName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the virtual machine"
+      }
+    },
+    "adminUsername": {
+      "type": "string",
+      "minLength": 1,
+      "metadata": {
+        "description": "User name for the Virtual Machine. Cannot be or be derived from root, admin, or administrator"
+      }
+    },
+    "adminPassword": {
+      "type": "securestring",
+      "metadata": {
+        "description": "Password for the Virtual Machine. Minimum of 12 characters; letters, numbers, and at least one special character"
+      }
+    }
+  },
+  "variables": {
+    "imagePublisher": "RedHat",
+    "imageOffer": "RHEL",
+    "imageSku": "7.2",
+    "dnsNameForPublicIP": "[toLower(concat(parameters('vmName'),'pip'))]",
+    "OSDiskName": "[concat(parameters('vmName'),'osdisk')]",
+    "nicName": "[concat(parameters('vmName'),'nic')]",
+    "nsgName": "[concat(parameters('vmName'),'nsg')]",
+    "addressPrefix": "10.0.0.0/16",
+    "subnetName": "Subnet",
+    "subnetPrefix": "10.0.0.0/24",
+    "vhdStorageType": "Standard_LRS",
+    "publicIPAddressType": "Static",
+    "vhdStorageContainerName": "vhds",
+    "vmSize": "Standard_G5",
+    "virtualNetworkName": "[concat(parameters('vmName'),'vnet')]",
+    "vnetId": "[resourceId('Microsoft.Network/virtualNetworks', variables('virtualNetworkName'))]",
+    "subnetRef": "[concat(variables('vnetId'), '/subnets/', variables('subnetName'))]",
+    "vhdStorageName": "[concat('vhdstorage', uniqueString(resourceGroup().id))]"
+  },
+  "resources": [
+    {
+      "apiVersion": "2015-06-15",
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "name": "[variables('nsgName')]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "NSG - RDP Access"
+      },
+      "properties": {
+        "securityRules": [
+          {
+            "name": "ssh-rule",
+            "properties": {
+              "description": "Allow SSH",
+              "protocol": "Tcp",
+              "sourcePortRange": "*",
+              "destinationPortRange": "22",
+              "sourceAddressPrefix": "Internet",
+              "destinationAddressPrefix": "*",
+              "access": "Allow",
+              "priority": 100,
+              "direction": "Inbound"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "name": "[variables('vhdStorageName')]",
+      "apiVersion": "2015-06-15",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "StorageAccount"
+      },
+      "properties": {
+        "accountType": "[variables('vhdStorageType')]"
+      }
+    },
+    {
+      "apiVersion": "2015-06-15",
+      "type": "Microsoft.Network/publicIPAddresses",
+      "name": "[variables('dnsNameForPublicIP')]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "PublicIPAddress"
+      },
+      "properties": {
+        "publicIPAllocationMethod": "[variables('publicIPAddressType')]",
+        "dnsSettings": {
+          "domainNameLabel": "[variables('dnsNameForPublicIP')]"
+        }
+      }
+    },
+    {
+      "apiVersion": "2015-06-15",
+      "type": "Microsoft.Network/virtualNetworks",
+      "name": "[variables('virtualNetworkName')]",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[concat('Microsoft.Network/networkSecurityGroups/', variables('nsgName'))]"
+      ],
+      "tags": {
+        "displayName": "VirtualNetwork"
+      },
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "[variables('addressPrefix')]"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "[variables('subnetName')]",
+            "properties": {
+              "addressPrefix": "[variables('subnetPrefix')]",
+              "networkSecurityGroup": {
+                "id": "[resourceId('Microsoft.Network/networkSecurityGroups', variables('nsgName'))]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "2015-06-15",
+      "type": "Microsoft.Network/networkInterfaces",
+      "name": "[variables('nicName')]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "NetworkInterface"
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Network/publicIPAddresses/', variables('dnsNameForPublicIP'))]",
+        "[concat('Microsoft.Network/virtualNetworks/', variables('virtualNetworkName'))]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "privateIPAllocationMethod": "Dynamic",
+              "publicIPAddress": {
+                "id": "[resourceId('Microsoft.Network/publicIPAddresses', variables('dnsNameForPublicIP'))]"
+              },
+              "subnet": {
+                "id": "[variables('subnetRef')]"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "apiVersion": "2015-06-15",
+      "type": "Microsoft.Compute/virtualMachines",
+      "name": "[parameters('vmName')]",
+      "location": "[resourceGroup().location]",
+      "tags": {
+        "displayName": "VirtualMachine"
+      },
+      "dependsOn": [
+        "[concat('Microsoft.Storage/storageAccounts/', variables('vhdStorageName'))]",
+        "[concat('Microsoft.Network/networkInterfaces/', variables('nicName'))]"
+      ],
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[variables('vmSize')]"
+        },
+        "osProfile": {
+          "computerName": "[parameters('vmName')]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "[variables('imagePublisher')]",
+            "offer": "[variables('imageOffer')]",
+            "sku": "[variables('imageSku')]",
+            "version": "latest"
+          },
+          "osDisk": {
+            "name": "osdisk",
+            "vhd": {
+              "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/', variables('OSDiskName'), '.vhd')]"
+            },
+            "caching": "ReadWrite",
+            "createOption": "FromImage"
+          },
+          "dataDisks": [
+            {
+              "name": "datadisk0",
+              "diskSizeGB": "1023",
+              "lun": 0,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk0.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk1",
+              "diskSizeGB": "1023",
+              "lun": 1,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk1.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk2",
+              "diskSizeGB": "1023",
+              "lun": 2,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk2.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk3",
+              "diskSizeGB": "1023",
+              "lun": 3,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk3.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk4",
+              "diskSizeGB": "1023",
+              "lun": 4,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk4.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk5",
+              "diskSizeGB": "1023",
+              "lun": 5,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk5.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk6",
+              "diskSizeGB": "1023",
+              "lun": 6,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk6.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk7",
+              "diskSizeGB": "1023",
+              "lun": 7,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk7.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk8",
+              "diskSizeGB": "1023",
+              "lun": 8,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk8.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk9",
+              "diskSizeGB": "1023",
+              "lun": 9,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk9.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk10",
+              "diskSizeGB": "1023",
+              "lun": 10,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk10.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk11",
+              "diskSizeGB": "1023",
+              "lun": 11,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk11.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk12",
+              "diskSizeGB": "1023",
+              "lun": 12,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk12.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk13",
+              "diskSizeGB": "1023",
+              "lun": 13,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk13.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk14",
+              "diskSizeGB": "1023",
+              "lun": 14,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk14.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk15",
+              "diskSizeGB": "1023",
+              "lun": 15,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk15.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk16",
+              "diskSizeGB": "1023",
+              "lun": 16,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk16.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk17",
+              "diskSizeGB": "1023",
+              "lun": 17,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk17.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk18",
+              "diskSizeGB": "1023",
+              "lun": 18,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk18.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk19",
+              "diskSizeGB": "1023",
+              "lun": 19,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk19.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk20",
+              "diskSizeGB": "1023",
+              "lun": 20,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk20.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk21",
+              "diskSizeGB": "1023",
+              "lun": 21,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk21.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk22",
+              "diskSizeGB": "1023",
+              "lun": 22,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk22.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk23",
+              "diskSizeGB": "1023",
+              "lun": 23,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk23.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk24",
+              "diskSizeGB": "1023",
+              "lun": 24,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk24.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk25",
+              "diskSizeGB": "1023",
+              "lun": 25,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk25.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk26",
+              "diskSizeGB": "1023",
+              "lun": 26,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk26.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk27",
+              "diskSizeGB": "1023",
+              "lun": 27,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk27.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk28",
+              "diskSizeGB": "1023",
+              "lun": 28,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk28.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk29",
+              "diskSizeGB": "1023",
+              "lun": 29,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk29.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk30",
+              "diskSizeGB": "1023",
+              "lun": 30,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk30.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk31",
+              "diskSizeGB": "1023",
+              "lun": 31,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk31.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk32",
+              "diskSizeGB": "1023",
+              "lun": 32,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk32.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk33",
+              "diskSizeGB": "1023",
+              "lun": 33,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk33.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk34",
+              "diskSizeGB": "1023",
+              "lun": 34,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk34.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk35",
+              "diskSizeGB": "1023",
+              "lun": 35,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk35.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk36",
+              "diskSizeGB": "1023",
+              "lun": 36,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk36.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk37",
+              "diskSizeGB": "1023",
+              "lun": 37,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk37.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk38",
+              "diskSizeGB": "1023",
+              "lun": 38,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk38.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk39",
+              "diskSizeGB": "1023",
+              "lun": 39,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk39.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk40",
+              "diskSizeGB": "1023",
+              "lun": 40,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk40.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk41",
+              "diskSizeGB": "1023",
+              "lun": 41,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk41.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk42",
+              "diskSizeGB": "1023",
+              "lun": 42,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk42.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk43",
+              "diskSizeGB": "1023",
+              "lun": 43,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk43.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk44",
+              "diskSizeGB": "1023",
+              "lun": 44,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk44.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk45",
+              "diskSizeGB": "1023",
+              "lun": 45,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk45.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk46",
+              "diskSizeGB": "1023",
+              "lun": 46,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk46.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk47",
+              "diskSizeGB": "1023",
+              "lun": 47,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk47.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk48",
+              "diskSizeGB": "1023",
+              "lun": 48,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk48.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            },
+            {
+              "name": "datadisk49",
+              "diskSizeGB": "1023",
+              "lun": 49,
+              "vhd": {
+                "uri": "[concat('http://', variables('vhdStorageName'), '.blob.core.windows.net/', variables('vhdStorageContainerName'), '/lindatadisk49.vhd')]"
+              },
+              "caching": "None",
+              "createOption": "Empty"
+            }
+
+          ]
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', variables('nicName'))]"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
