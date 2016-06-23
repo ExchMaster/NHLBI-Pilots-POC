@@ -1,5 +1,26 @@
 #Enable X-11 Forwarding: RedHat/CentOS
-yum install xorg-x11-xauth xorg-x11-fonts-* xorg-x11-font-utils xorg-x11-fonts-Type1 xclock
+yum install xorg-x11-xauth xorg-x11-fonts-* xorg-x11-font-utils xorg-x11-fonts-Type1 xorg-x11-apps Xnest gdm -y
+yum groupinstall 'Server with GUI' 'X Window System' -y
+
+ tar -xvzf ./xrdp-v0.6.1.tar.gz
+/etc/gdm/custom.conf
+# GDM configuration storage
+
+[daemon]
+
+[security]
+AllowRemoteRoot=true
+DisallowTCP=false
+[xdmcp]
+Enable=true
+[greeter]
+
+[chooser]
+
+[debug]
+
+
+
 
 mdadm --create /dev/md127 --level 0 --raid-devices 50 /dev/sdc /dev/sdd /dev/sde /dev/sdf /dev/sdg /dev/sdh /dev/sdi /dev/sdj /dev/sdk /dev/sdl /dev/sdm /dev/sdn /dev/sdo /dev/sdp /dev/sdq /dev/sdr /dev/sds /dev/sdt /dev/sdu /dev/sdv /dev/sdw /dev/sdx /dev/sdy dev/sdz /dev/sdaa /dev/sdab /dev/sdac /dev/sdad /dev/sdae /dev/sdaf /dev/sdag /dev/sdah /dev/sdai /dev/sdaj /dev/sdak /dev/sdal /dev/sdam /dev/sdan /dev/sdao /dev/sdap /dev/sdaq /dev/sdar /dev/sdas /dev/sdat /dev/sdau /dev/sdav /dev/sdaw /dev/sdax /dev/sday /dev/sdaz  
 
