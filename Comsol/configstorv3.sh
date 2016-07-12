@@ -17,7 +17,7 @@ mkfs.xfs /dev/vg1/lv1 -f
 #Creates mount point and updates fstab so mount point persists during reboots, automatically mounts volumes for current session
 mkdir -p /data
 #Add to fstab
-echo /dev/md127 /data                   xfs     defaults        0 0 >> /etc/fstab
+echo /dev/vg1/lv1 /data                   xfs     defaults        0 0 >> /etc/fstab
 #mount volumes
 mount -a
 #Allow everyone access to /data
